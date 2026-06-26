@@ -1,5 +1,21 @@
 # manifest
 
+## 6.12.1
+
+### Patch Changes
+
+- 060db8f: Stop a wrong or revoked agent key from hammering the database and flooding the logs. Every request bearing a bad `mnfst_` key used to run a fresh indexed DB lookup and emit a warning, so one misconfigured agent in a retry loop sustained DB load and log noise indefinitely. Rejected keys are now cached for 30s (cleared the moment a key is created or rotated), collapsing a storm to one lookup and one log line per window. Separately, the dashboard live-update stream (`/api/v1/events`) no longer counts against the global rate limiter, so heavy dashboard use can't trip a 429 that severs the stream.
+- 3e0b517: Support Alibaba Cloud Model Studio compatible-mode endpoint URLs for Qwen API-key connections, including workspace-scoped Frankfurt endpoints.
+- bc292b4: Stop a slow memory climb on long-running servers. The global dashboard response cache used cache-manager's default in-memory store, which has no size limit and only drops entries when their exact URL is requested again. High-cardinality dashboard URLs (filters, cursors, time ranges) piled up for the life of the process. It now uses a bounded LRU store with a hard entry cap plus an active sweep of expired entries. Three proxy session caches (Anthropic thinking blocks, Gemini thought signatures, DeepSeek reasoning content) were also uncapped and now evict their oldest entries once a ceiling is reached.
+- 16f0cc9: Restore dropped `reasoning_content` on DeepSeek-compatible tool-call follow-up turns, including fallback requests where clients stripped provider-specific reasoning fields. Manifest now caches streamed and non-streamed assistant tool-call reasoning by session and first `tool_call.id`, and replays only exact DeepSeek-style `reasoning_content` for the same tool-call id. If no exact value is recoverable, Manifest injects an empty `reasoning_content` only as a last resort for DeepSeek-compatible assistant tool-call turns. Other reasoning fields such as `reasoning`, `reasoning_text`, and `reasoning_details` are treated as provider-specific and are not translated across formats. Normal assistant turns without tool calls are not cached or replayed by content fingerprint.
+- fbf8160: Allow self-hosted installs to tune the proxy message-count limit with MANIFEST_MAX_MESSAGES.
+- 30b58df: Add a dismissible News banner to the top of the global Overview. It links out to a Manifest video about choosing an AI subscription. Dismissals persist per news item in localStorage, so publishing a new item re-shows it. The thumbnail is self-hosted to keep the CSP strict, and the content is a single code-managed item in `services/news.ts`.
+- 4c7d19e: OpenCode Go and Zen model discovery now use the models.dev catalog first, and manual refreshes refresh the models.dev cache before OpenCode Go falls back to its docs catalog.
+- 9c36695: Refresh OpenCode Go models from the live OpenCode catalog and clarify per-request subscription values as quota usage instead of extra billing.
+- 4aace1b: Return provider context-window errors as OpenAI-compatible `/v1` errors while still letting configured fallbacks try a larger context window.
+- 687c2b7: Prevent Anthropic signed thinking blocks from being replayed into incompatible fallback attempts. Cached thinking is now scoped to the provider, auth type, and model that produced it, so an incompatible fallback omits stale signatures while a later compatible Anthropic attempt can restore them.
+- 26be5cc: Stop rolling deploys from dropping requests. During a deploy the old replicas got SIGTERM and closed their socket immediately while the Railway edge was still routing to them, so a chunk of requests failed for the length of the deploy window. The server now drains on SIGTERM: the health probe at /api/v1/health reports 503 so the edge deregisters the replica, and the process keeps serving for SHUTDOWN_DRAIN_MS (default 10s) before closing connections. railway.toml gains overlapSeconds and drainingSeconds so the new deployment overlaps the old one and the drain finishes before SIGKILL.
+
 ## 6.12.0
 
 ### Minor Changes
